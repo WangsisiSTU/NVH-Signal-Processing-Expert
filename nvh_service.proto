@@ -1,0 +1,56 @@
+// NVH Signal Processing Expert — gRPC 服务定义
+// PiERN 路由器在推理时异步调用此服务完成物理计算。
+
+syntax = "proto3";
+
+package piern.nvh;
+
+// ============================================================
+// 消息定义
+// ============================================================
+
+// LLM 路由器下发的计算请求
+message NVHRequest {
+  // 原始传感器数据, 一维 float32 数组
+  repeated float signal_data = 1;
+
+  // 采样率 (Hz), 默认 25600
+  double sample_rate = 2;
+
+  // 计算指令, 取值:
+  //   FIND_RESONANCE | ANALYZE_NOISE_TYPE | TRANSIENT_SHOCK
+  string instruction = 3;
+
+  // 可选: FFT top_k, 仅 FIND_RESONANCE 使用
+  int32 top_k = 4;
+}
+
+// NVH 专家返回的计算结果 (统一 JSON 包装, 方便 LLM 直接注入思维链)
+message NVHResponse {
+  // 指令回显
+  string instruction = 1;
+
+  // 序列化的 JSON 结果字典
+  // FIND_RESONANCE  → {"primary_frequencies_hz": [...], "amplitudes": [...]}
+  // ANALYZE_NOISE_TYPE → {"band_spl_db": {"rumble": [...], ...}}
+  // TRANSIENT_SHOCK  → {"max_shock_time_sec": [...]}
+  string result_json = 2;
+
+  // 状态码: 0=成功, 非 0=错误
+  int32 status_code = 3;
+
+  // 错误描述 (仅在 status_code != 0 时有值)
+  string error_message = 4;
+}
+
+// ============================================================
+// 服务定义
+// ============================================================
+
+service NVHExpertService {
+  // 单次同步调用 (适用于低延迟场景)
+  rpc Execute(NVHRequest) returns (NVHResponse);
+
+  // 双向流式调用 (适用于 LLM 批量下发多条信号分析指令)
+  rpc ExecuteStream(stream NVHRequest) returns (stream NVHResponse);
+}
